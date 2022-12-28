@@ -30,29 +30,36 @@ import org.springframework.web.filter.CharacterEncodingFilter;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.BDDAssumptions.given;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-
-//@RunWith(SpringRunner.class)
+//구성 요소간 통합을 테스트하는 integration test 를 구축
+@RunWith(SpringRunner.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class TodoControllerTest {
 
     @Autowired
     private TodoController controller;
+
     @Autowired
-    MockMvc mockMvc;
+    private TodoService service;
+
+    @Autowired
+    private TodoRepository repo;
+    @Autowired
+    MockMvc mockMvc; //가짜 MVC. 가짜로 URL과 파라미터를 브라우저에서 사용하는 것처럼 만들어서 Controller를 실행할 수 있음.
     @Autowired
     ObjectMapper mapper;
     @Autowired
-    private WebApplicationContext ctx;
-
+    private WebApplicationContext ctx; //컨트롤러에 @Autowired와 같은 어노테이션이 붙어있는 것들 중 @ContextConfiguration에 등록돼 있는 xml 파일에 존재하는 Bean들만 자동으로 생성하고 등록한다.
 
     @Before
     public void setup() {
@@ -61,8 +68,10 @@ class TodoControllerTest {
                 .alwaysDo(print())
                 .build();
     }
+
     @Test
     void createTodo() throws Exception{
+
         String body = mapper.writeValueAsString(
                 TodoDTO.builder().title("CreateText").build()
         );
@@ -73,10 +82,20 @@ class TodoControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andDo(print());
+
+        //assertThat(repo.findByUserId("temporary-user").get(0).getTitle()).isEqualTo("Hello");
     }
 
     @Test
     void getTodos() throws Exception{
+        ResponseEntity<?> responseEntity = controller.getTodos("temporary-user");
+        ResponseDTO responseDTO= (ResponseDTO)responseEntity.getBody();
+        List<TodoDTO> data = responseDTO.getData();
+        //가져온 갯수 같은지 확인
+        if(data.size()>0){
+            assertEquals(repo.findByUserId("temporary-user").size(), data.size());
+        }
+
         mockMvc.perform(get("/todo")
                         .param("userId", "temporary-user")
                 )
@@ -89,25 +108,31 @@ class TodoControllerTest {
     @Test
     @DisplayName("업데이트 테스트")
     void updateTodo() throws Exception {
-        controller.createTodo(new TodoDTO().builder().title("New Text").build());
+
         ResponseEntity<?> responseEntity = controller.getTodos("temporary-user");
         ResponseDTO responseDTO= (ResponseDTO)responseEntity.getBody();
         List<TodoDTO> data = responseDTO.getData();
 
-        String body = mapper.writeValueAsString(
-                TodoDTO.builder().id(data.get(0).getId()).title("ModifiedTitle").build()
-        );
-        mockMvc.perform(put("/todo")
-                        .content(body)
-                        .contentType(MediaType.APPLICATION_JSON) //보내는 데이터의 타입을 명시
-                )
-                .andExpect(status().isOk())
-                .andDo(print());
+        if(data.size()>0){
+            System.out.println(data.get(0));
+            String dtoId = data.get(0).getId();
+            String body = mapper.writeValueAsString(
+                    TodoDTO.builder().id(dtoId).title("ModifiedTitle").build()
+            );
+            mockMvc.perform(put("/todo")
+                            .content(body)
+                            .contentType(MediaType.APPLICATION_JSON) //보내는 데이터의 타입을 명시
+                    )
+                    .andExpect(status().isOk())
+                    .andDo(print());
+
+            assertThat(repo.findById(dtoId).get().getTitle()).isEqualTo("ModifiedTitle");
+        }
     }
 
     @Test
     void deleteTodo() throws Exception{
-        controller.createTodo(new TodoDTO().builder().title("New Text2").build());
+        controller.createTodo(new TodoDTO().builder().title("New Text").build());
         ResponseEntity<?> responseEntity = controller.getTodos("temporary-user");
         ResponseDTO responseDTO= (ResponseDTO)responseEntity.getBody();
         List<TodoDTO> data = responseDTO.getData();
